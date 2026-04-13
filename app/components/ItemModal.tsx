@@ -16,7 +16,7 @@ const COLOR_SWATCHES = [
   { label: "Teal",   hex: "#0D9488" },
 ];
 
-type EditScope = "this" | "future" | "all";
+type EditScope = "this" | "all";
 type DeleteScope = "this" | "all";
 
 const btnBase = "flex-1 py-2 px-3 text-[12px] font-medium rounded-xl transition-all";
@@ -37,6 +37,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
   );
   const [editNotes, setEditNotes] = useState(item.notes ?? "");
   const [editColor, setEditColor] = useState(item.color ?? "#2563EB");
+  const [editPriority, setEditPriority] = useState<number>(item.raw?.priority ?? item.priority ?? 0);
   const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState(
     item.raw?.recurrenceEndDate ?? ""
   );
@@ -91,23 +92,6 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
           notes: editNotes !== item.notes ? editNotes : undefined,
           isDeleted: false,
         });
-      } else if (scope === "future" && modelType === "CalendarItem") {
-        const dayBefore = dayjs(occurrenceDate).subtract(1, "day").format("YYYY-MM-DD");
-        await client.models.CalendarItem.update({ id: parentId, recurrenceEndDate: dayBefore });
-        await client.models.CalendarItem.create({
-          userId: item.raw?.userId ?? "",
-          title: editTitle,
-          isAllDay: item.isAllDay ?? false,
-          startDate: occurrenceDate,
-          startTime: editStart ? startD.format("HH:mm:ss") : null,
-          endTime: editEnd ? endD!.format("HH:mm:ss") : null,
-          recurrence: item.recurrence ?? "NONE",
-          recurrenceEndDate: editRecurrenceEndDate || null,
-          color: editColor,
-          notes: editNotes || null,
-          source: item.source ?? "user",
-          deletedOccurrences: [],
-        });
       } else {
         // "all" — or non-recurring
         if (modelType === "CalendarItem") {
@@ -119,6 +103,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
             endTime: editEnd ? endD!.format("HH:mm:ss") : null,
             color: editColor,
             notes: editNotes || null,
+            priority: editPriority,
             recurrenceEndDate: editRecurrenceEndDate || null,
           });
         } else {
@@ -127,6 +112,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
             title: editTitle,
             deadline: startD.toISOString(),
             notes: editNotes || null,
+            priority: editPriority,
           });
         }
       }
@@ -185,11 +171,18 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
         body: JSON.stringify({ message: userMsg, history: aiHistory, currentItemContext: item }),
       });
       const data = await res.json();
-      if ((data.action === "edit" || data.action === "add") && data.data) {
-        if (modelType === "CalendarItem") await client.models.CalendarItem.update({ id: parentId, ...data.data });
-        else await client.models.TodoItem.update({ id: parentId, ...data.data });
-      } else if (data.action === "delete") {
-        setShowScopeDialog("delete");
+      // Handle operations array format
+      const ops: any[] = Array.isArray(data.operations) ? data.operations : [];
+      if (ops.length === 0 && data.action) ops.push(data);
+      for (const op of ops) {
+        if ((op.action === "edit" || op.action === "add") && op.data) {
+          if (modelType === "CalendarItem") {
+            await client.models.CalendarItem.update({ id: parentId, ...op.data });
+          } else {
+            await client.models.TodoItem.update({ id: parentId, ...op.data });
+          }
+        }
+        // clarify: just show message
       }
       setAiHistory((p) => [...p, { role: "assistant", content: data.message || "Done!" }]);
     } catch {
@@ -201,11 +194,12 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="absolute inset-0 z-50 flex justify-end overflow-hidden">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[1px]" onClick={onClose} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[1px]">
+      {/* Click outside to close */}
+      <div className="absolute inset-0" onClick={onClose} />
       <div
-        className="relative w-[340px] h-full bg-[#141414] border-l border-[#272727] shadow-2xl flex flex-col z-10"
-        style={{ animation: "slideInRight 0.2s ease-out" }}
+        className="relative w-[340px] max-h-[90vh] bg-[#141414] border border-[#272727] rounded-2xl shadow-2xl flex flex-col z-10"
+        style={{ animation: "fadeIn 0.15s ease-out" }}
       >
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between p-4 border-b border-[#272727] flex-shrink-0">
@@ -223,7 +217,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
               <span className="text-[10px] text-gray-500">
-                {item.isAllDay ? "All-day" : modelType === "TodoItem" ? "Todo" : "Event"}
+                {item.isAllDay ? "All-day" : modelType === "TodoItem" ? "Task" : "Event"}
               </span>
               {isRecurring && (
                 <span className="text-[10px] text-gray-600 flex items-center gap-1">
@@ -277,7 +271,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                 <p className="text-[10px] text-gray-500 mt-0.5">Which occurrences should be changed?</p>
               </div>
               <div className="divide-y divide-[#222]">
-                {(["this", "future", "all"] as EditScope[]).map((scope) => (
+                {(["this", "all"] as EditScope[]).map((scope) => (
                   <button
                     key={scope}
                     onClick={() => pickEditScope(scope)}
@@ -285,8 +279,6 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                   >
                     {scope === "this"
                       ? "This occurrence only"
-                      : scope === "future"
-                      ? "This and all future"
                       : "All occurrences"}
                   </button>
                 ))}
@@ -302,19 +294,17 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
 
           {/* Delete scope picker */}
           {showScopeDialog === "delete" && (
-            <div className="rounded-2xl border border-red-900/50 bg-[#1a0a0a] overflow-hidden">
-              <div className="px-4 py-3 border-b border-red-900/30">
-                <p className="text-[12px] font-semibold text-red-400">
-                  Delete{isRecurring ? " recurring event" : ""}?
-                </p>
-                <p className="text-[10px] text-gray-600 mt-0.5 truncate">"{item.title}"</p>
+            <div className="bg-[#1C1C1E] border border-[#333] rounded-xl p-3 mb-4 shadow-sm" style={{ animation: "fadeIn 0.15s ease-out" }}>
+              <div className="mb-3">
+                <p className="text-[13px] font-semibold text-white">Delete Item</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Are you sure you want to delete this?</p>
               </div>
-              <div className="p-3 space-y-2">
+              <div className="space-y-1.5">
                 {isRecurring && (
                   <button
                     onClick={() => handleDelete("this")}
                     disabled={deleting}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#272727] hover:bg-[#333] text-[13px] text-gray-200 text-left transition-colors disabled:opacity-50"
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#2A2A2A] hover:bg-[#333] text-[13px] text-gray-200 text-left transition-colors disabled:opacity-50"
                   >
                     Remove this date only
                   </button>
@@ -322,7 +312,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                 <button
                   onClick={() => handleDelete("all")}
                   disabled={deleting}
-                  className="w-full py-2.5 px-4 rounded-xl bg-red-900/60 hover:bg-red-800 text-[13px] text-red-300 text-left border border-red-800/40 transition-colors disabled:opacity-50"
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#2A2A2A] hover:bg-red-900/40 text-[13px] text-red-400 text-left border border-transparent hover:border-red-900/40 transition-colors disabled:opacity-50"
                 >
                   {deleting
                     ? "Deleting…"
@@ -332,7 +322,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                 </button>
                 <button
                   onClick={() => setShowScopeDialog(null)}
-                  className="w-full py-2 text-[12px] text-gray-600 hover:text-gray-400 transition-colors"
+                  className="w-full py-2 text-[12px] text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
@@ -425,6 +415,59 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
               </div>
             </div>
           )}
+
+          {/* Priority stars */}
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">Priority</div>
+            {editing ? (
+              <div className="flex gap-1.5 items-center">
+                {[1, 2, 3].map((star) => {
+                  const filled = editPriority >= star;
+                  return (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setEditPriority(editPriority === star ? 0 : star)}
+                      className="text-[18px] transition-all hover:scale-110 leading-none"
+                      style={{ color: filled ? (star === 3 && filled ? "#EF4444" : "#F59E0B") : "#4B5563" }}
+                    >
+                      {filled ? "★" : "☆"}
+                    </button>
+                  );
+                })}
+                {editPriority > 0 && (
+                  <span className="text-[11px] text-gray-500 ml-1">
+                    {["Low", "Medium", "High"][editPriority - 1]}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-0.5 items-center">
+                {(item.raw?.priority ?? item.priority ?? 0) === 0 ? (
+                  <span className="text-[12px] text-gray-600 italic">None</span>
+                ) : (
+                  [1, 2, 3].map((star) => {
+                    const p = item.raw?.priority ?? item.priority ?? 0;
+                    const filled = p >= star;
+                    return (
+                      <span
+                        key={star}
+                        className="text-[16px] leading-none"
+                        style={{ color: filled ? (star === 3 && p >= 3 ? "#EF4444" : "#F59E0B") : "#374151" }}
+                      >
+                        {filled ? "★" : "☆"}
+                      </span>
+                    );
+                  })
+                )}
+                {(item.raw?.priority ?? item.priority ?? 0) > 0 && (
+                  <span className="text-[11px] text-gray-500 ml-1.5">
+                    {["Low", "Medium", "High"][(item.raw?.priority ?? item.priority ?? 0) - 1]}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Notes */}
           <div>

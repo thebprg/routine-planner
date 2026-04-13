@@ -5,7 +5,7 @@ import AIChatBar from "@/app/components/AIChatBar";
 import ItemModal from "@/app/components/ItemModal";
 import { client } from "@/app/utils/amplifyClient";
 import dayjs from "dayjs";
-import { RefreshCw, ChevronDown, Check } from "lucide-react";
+import { RefreshCw, ChevronDown, Check, Pencil, Trash2, Calendar } from "lucide-react";
 
 type TodoStatus = "past-due" | "today" | "upcoming" | "no-deadline";
 
@@ -50,7 +50,8 @@ export default function TodoSidebar() {
   const [filter, setFilter] = useState("All");
   const [filterOpen, setFilterOpen] = useState(false);
   const [items, setItems] = useState<TodoEntry[]>([]);
-  const [selectedTodo, setSelectedTodo] = useState<any>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [modalItem, setModalItem] = useState<any>(null);
 
   useEffect(() => {
     let active = true;
@@ -84,7 +85,12 @@ export default function TodoSidebar() {
             };
           });
           const visible = mapped.filter((i) => !i.isDone);
-          visible.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
+          // Sort: priority desc (3→0), then status order
+          visible.sort((a, b) => {
+            const pa = (b.raw?.priority ?? 0) - (a.raw?.priority ?? 0);
+            if (pa !== 0) return pa;
+            return STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+          });
           if (active) setItems(visible);
         },
         error: (e) => console.warn("[TodoSidebar]", e),
@@ -111,6 +117,16 @@ export default function TodoSidebar() {
     }
   };
 
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      await client.models.TodoItem.delete({ id });
+      setExpandedId(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const filtered = filter === "All" ? items : items.filter((i) => i.status === filter);
   const currentLabel = FILTER_OPTIONS.find((f) => f.key === filter)?.label ?? "All Tasks";
 
@@ -118,9 +134,9 @@ export default function TodoSidebar() {
     <div className="flex flex-col h-full bg-[#1C1C1E] text-white w-full overflow-hidden">
 
       {/* ── Header with dropdown filter ── */}
-      <div className="px-4 pt-4 pb-3 border-b border-[#2C2C2E] flex-shrink-0">
+      <div className="px-3 pt-[6px] pb-1 border-b border-[#2C2C2E] flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold text-white tracking-tight">Reminders</h2>
+          <h2 className="text-[13px] font-semibold text-white tracking-tight">Tasks</h2>
 
           {/* Dropdown filter */}
           <div className="relative">
@@ -169,34 +185,72 @@ export default function TodoSidebar() {
           </div>
         ) : (
           filtered.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setSelectedTodo({
-                ...item.raw,
-                title: item.title,
-                start: item.raw.deadline ? new Date(item.raw.deadline as string) : undefined,
-                isRecurring: item.isRecurring,
-                modelType: "TodoItem",
-                raw: item.raw,
-              })}
-              className={`bg-[#2C2C2E] hover:bg-[#38383A] rounded-xl py-2.5 px-3 border-l-[3px] flex items-center gap-3 cursor-pointer transition-colors ${BORDER[item.status]}`}
-            >
-              {/* Circle checkbox */}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleCheck(item); }}
-                className="w-5 h-5 rounded-full border-2 border-[#48484A] hover:border-[#8E8E93] flex-shrink-0 flex items-center justify-center transition-colors hover:bg-[#48484A]/30"
-              />
+            <div key={item.id} className={`bg-[#2C2C2E] rounded-xl border-l-[3px] flex flex-col transition-all ${BORDER[item.status]}`}>
+              <div
+                onClick={() => setExpandedId((p) => p === item.id ? null : item.id)}
+                className={`py-2.5 px-3 flex items-center gap-3 cursor-pointer hover:bg-[#38383A] transition-colors rounded-xl ${expandedId === item.id ? "rounded-b-none bg-[#38383A]" : ""}`}
+              >
+                {/* Circle checkbox */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleCheck(item); }}
+                  className="w-5 h-5 rounded-full border-2 border-[#48484A] hover:border-[#8E8E93] flex-shrink-0 flex items-center justify-center transition-colors hover:bg-[#48484A]/30"
+                />
 
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-white truncate">{item.title}</div>
-                <div className={`text-[10px] mt-0.5 truncate ${LABEL_COLOR[item.status]}`}>
-                  {item.dateStr}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[13px] font-medium text-white truncate">{item.title}</span>
+                    {(item.raw?.priority ?? 0) > 0 && (
+                      <span
+                        className="text-[10px] leading-none flex-shrink-0"
+                        style={{ color: (item.raw?.priority ?? 0) === 3 ? "#EF4444" : "#F59E0B" }}
+                      >
+                        {"★".repeat(item.raw?.priority ?? 0)}
+                      </span>
+                    )}
+                  </div>
+                  <div className={`text-[10px] mt-0.5 truncate ${LABEL_COLOR[item.status]}`}>
+                    {item.dateStr}
+                  </div>
                 </div>
+
+                {item.isRecurring && (
+                  <RefreshCw size={11} className="text-[#636366] flex-shrink-0" />
+                )}
               </div>
 
-              {item.isRecurring && (
-                <RefreshCw size={11} className="text-[#636366] flex-shrink-0" />
+              {expandedId === item.id && (
+                <div className="px-3 pb-3 pt-1 text-[12px] flex flex-col gap-2 bg-[#38383A] rounded-b-xl" style={{ animation: "fadeIn 0.15s ease-out" }}>
+                  {item.raw.notes && (
+                    <div className="text-gray-300 italic text-[11px] leading-relaxed bg-[#2A2A2A] p-2 rounded-lg mt-1">
+                      {item.raw.notes}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModalItem({
+                          ...item.raw,
+                          title: item.title,
+                          start: item.raw.deadline ? new Date(item.raw.deadline as string) : undefined,
+                          isRecurring: item.isRecurring,
+                          modelType: "TodoItem",
+                          raw: item.raw,
+                        });
+                      }}
+                      className="flex bg-[#48484A] hover:bg-[#3B5BDB] flex-1 items-center justify-center py-1.5 rounded-lg text-white gap-1.5 transition-colors"
+                    >
+                      <Pencil size={11} /> Edit
+                    </button>
+                    <button
+                      onClick={(e) => handleDelete(e, item.id)}
+                      className="flex bg-[#48484A] hover:bg-red-900/40 flex-1 items-center justify-center py-1.5 rounded-lg text-red-300 hover:text-red-400 gap-1.5 transition-colors border border-transparent hover:border-red-900/60"
+                    >
+                      <Trash2 size={11} /> Delete
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))
@@ -208,8 +262,8 @@ export default function TodoSidebar() {
         <AIChatBar />
       </div>
 
-      {selectedTodo && (
-        <ItemModal item={selectedTodo} onClose={() => setSelectedTodo(null)} />
+      {modalItem && (
+        <ItemModal item={modalItem} onClose={() => setModalItem(null)} />
       )}
     </div>
   );

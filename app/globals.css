@@ -55,8 +55,8 @@ body {
 }
 .cal-rbc-wrapper .rbc-time-content::-webkit-scrollbar { display: none !important; width: 0 !important; }
 
-/* Hide agenda view scrollbar */
-.cal-rbc-wrapper .rbc-agenda-view { scrollbar-width: none !important; overflow: hidden; }
+/* Hide agenda view scrollbar but KEEP scrollable */
+.cal-rbc-wrapper .rbc-agenda-view { scrollbar-width: none !important; overflow-y: auto !important; overflow-x: hidden !important; }
 .cal-rbc-wrapper .rbc-agenda-view::-webkit-scrollbar { display: none !important; }
 .cal-rbc-wrapper .rbc-agenda-content { scrollbar-width: none !important; }
 .cal-rbc-wrapper .rbc-agenda-content::-webkit-scrollbar { display: none !important; }
@@ -72,8 +72,11 @@ body {
 /* ── WEEK / DAY TIME VIEW ───────────────────────────────────────────────────── */
 .cal-rbc-wrapper .rbc-time-view { border: none !important; background: var(--cal-bg) !important; }
 
-/* Vertical column separators — slightly visible */
-.cal-rbc-wrapper .rbc-time-content > * + * > * { border-left: 1px solid var(--cal-sep) !important; }
+/* Vertical column separators for time content — use right borders */
+.cal-rbc-wrapper .rbc-time-content > * + * > * { border-left: none !important; }
+
+/* In standard RBC, the day slots are wrapped in rbc-day-slot. Borders handled above */
+.cal-rbc-wrapper .rbc-day-slot { border-left: none !important; }
 
 /* Horizontal slot group lines — grayish, NOT white */
 .cal-rbc-wrapper .rbc-timeslot-group {
@@ -105,31 +108,125 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── CURRENT TIME INDICATOR — green line + dot on left ─────────────────────── */
+/* ── CURRENT TIME INDICATOR ─────────────────────────────────────────────── */
 .cal-rbc-wrapper .rbc-current-time-indicator {
   background-color: var(--cal-green) !important;
   height: 2px !important;
-  position: relative !important;
+  position: absolute !important;
   z-index: 5;
+  pointer-events: none;
   box-shadow: 0 0 6px rgba(48, 209, 88, 0.45);
 }
-/* Green dot at the left edge (origin point) */
-.cal-rbc-wrapper .rbc-current-time-indicator::before {
-  content: "" !important;
-  display: block !important;
-  position: absolute !important;
-  left: 0 !important;
-  top: -4px !important;
-  width: 10px !important;
-  height: 10px !important;
-  border-radius: 50% !important;
-  background: var(--cal-green) !important;
-  box-shadow: 0 0 6px rgba(48, 209, 88, 0.7) !important;
+
+/* ── Today column styling ───────────────────────────────────────────────────── */
+/* Remove background shading */
+.cal-rbc-wrapper .rbc-today { background: rgba(255,255,255,0.015) !important; }
+
+/* ── Unified column border strategy ─────────────────────────────────────────── */
+/* Step 1: Strip ALL left-borders that RBC adds by default */
+.cal-rbc-wrapper .rbc-header { border-left: none !important; }
+.cal-rbc-wrapper .rbc-time-header-content .rbc-header { border-left: none !important; }
+.cal-rbc-wrapper .rbc-day-bg { border-left: none !important; }
+.cal-rbc-wrapper .rbc-day-slot { border-left: none !important; }
+
+/* Step 2: Apply uniform right-border to every cell — this creates ONE line between
+   columns instead of two colliding left-borders */
+.cal-rbc-wrapper .rbc-time-view .rbc-header {
+  border-right: 1px solid var(--cal-sep) !important;
+}
+.cal-rbc-wrapper .rbc-time-view .rbc-day-bg {
+  border-right: 1px solid var(--cal-sep) !important;
+}
+.cal-rbc-wrapper .rbc-time-view .rbc-day-slot {
+  border-right: 1px solid var(--cal-sep) !important;
 }
 
-/* ── Today column ───────────────────────────────────────────────────────────── */
-.cal-rbc-wrapper .rbc-today { background: rgba(10, 132, 255, 0.05) !important; }
-.cal-rbc-wrapper .rbc-month-view .rbc-today { background: rgba(10, 132, 255, 0.07) !important; }
+/* Step 3: Remove right-border from the LAST column (no border at outer right edge) */
+.cal-rbc-wrapper .rbc-time-view .rbc-header:last-child,
+.cal-rbc-wrapper .rbc-time-view .rbc-day-bg:last-child,
+.cal-rbc-wrapper .rbc-time-view .rbc-day-slot:last-child {
+  border-right: none !important;
+}
+
+/* Step 4: Today highlight — use inset box-shadow so it sits INSIDE the cell bounds.
+   Left edge: inset 1px from left. Right edge: must override the shared right-border.
+   We replace the right border with a brighter one via box-shadow right inset. */
+.cal-rbc-wrapper .rbc-time-view .rbc-header.rbc-today {
+  border-right: 1px solid #B8B8B8 !important; /* brighter right */
+  box-shadow: inset 1px 0 0 0 #B8B8B8 !important; /* bright left via inset */
+}
+.cal-rbc-wrapper .rbc-time-view .rbc-day-bg.rbc-today {
+  border-right: 1px solid #B8B8B8 !important;
+  box-shadow: inset 1px 0 0 0 #B8B8B8 !important;
+}
+.cal-rbc-wrapper .rbc-time-view .rbc-day-slot.rbc-today {
+  border-right: 1px solid #B8B8B8 !important;
+  box-shadow: inset 1px 0 0 0 #B8B8B8 !important;
+}
+
+/* Step 5: Element immediately AFTER today gets NO left adjustment since we use right-borders.
+   But: we need today's right-border to be visually the left border of the next column.
+   The next column's left is already absent (Step 1), so today's right-border serves double duty — ✅ */
+
+.cal-rbc-wrapper .rbc-day-view .rbc-today {
+  box-shadow: none !important;
+  border-right: 1px solid var(--cal-sep) !important;
+}
+
+.cal-rbc-wrapper .rbc-month-view .rbc-today {
+  box-shadow: inset 0 0 0 1px #B8B8B8 !important;
+}
+
+/* Highlight today's date heading text */
+.cal-rbc-wrapper .rbc-time-header-content .rbc-today .rbc-button-link,
+.cal-rbc-wrapper .rbc-time-header-content .rbc-today a,
+.cal-rbc-wrapper .rbc-time-header-content .rbc-today span {
+  color: var(--cal-green) !important;
+  font-weight: 800 !important;
+}
+.cal-rbc-wrapper .rbc-time-header .rbc-today.rbc-header {
+  border-bottom: 2px solid #B8B8B8 !important;
+}
+
+
+/* ── Agenda View Styling ────────────────────────────────────────────────────── */
+.cal-rbc-wrapper .rbc-agenda-view {
+  background-color: var(--cal-bg) !important;
+  color: #fff !important;
+}
+.cal-rbc-wrapper .rbc-agenda-table tbody > tr {
+  border-bottom: 1px solid var(--cal-sep) !important;
+}
+.cal-rbc-wrapper .rbc-agenda-date-cell {
+  font-weight: 600 !important;
+  border-right: 1px solid var(--cal-sep) !important;
+  padding: 12px 16px !important;
+  color: white !important;
+}
+.cal-rbc-wrapper .rbc-agenda-time-cell {
+  color: #A1A1AA !important; /* light gray for time */
+  padding: 12px 16px !important;
+  white-space: nowrap !important;
+}
+.cal-rbc-wrapper .rbc-agenda-event-cell {
+  padding: 12px 16px !important;
+}
+
+/* ── DRAG & DROP RESIZE HANDLES ─────────────────────────────────────────────── */
+/* Convert the equal sign '=' to a single bright line */
+.cal-rbc-wrapper .rbc-addons-dnd-resize-ns-icon {
+  background-image: none !important;
+  border-top: none !important;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.7) !important;
+  height: 2px !important;
+  width: 16px !important;
+  margin: 1px auto !important;
+}
+
+/* Hide the horizontal resize handles (sometimes appear for all day events) */
+.cal-rbc-wrapper .rbc-addons-dnd-resize-ew-icon {
+  display: none !important;
+}
 
 /* ── COLUMN HEADERS ─────────────────────────────────────────────────────────── */
 .cal-rbc-wrapper .rbc-time-header {
@@ -141,11 +238,13 @@ body {
 .cal-rbc-wrapper .rbc-time-header.rbc-overflowing { margin-right: 0 !important; border-right: none !important; }
 .cal-rbc-wrapper .rbc-time-header > .rbc-row:first-child { min-height: 0; }
 
-.cal-rbc-wrapper .rbc-header {
+/* Prevent the flex column rule from breaking agenda view table headers! */
+.cal-rbc-wrapper .rbc-time-header .rbc-header,
+.cal-rbc-wrapper .rbc-month-view .rbc-header {
   background: var(--cal-bg) !important;
   border-bottom: none !important;
   border-left: none !important;
-  padding: 10px 0 10px !important;
+  padding: 8px 0 8px !important;
   text-transform: uppercase !important;
   font-size: 10px !important;
   color: var(--cal-label) !important;
@@ -157,14 +256,15 @@ body {
   flex-direction: column;
   gap: 3px;
 }
-.cal-rbc-wrapper .rbc-header + .rbc-header { border-left: 1px solid var(--cal-sep) !important; }
+/* Today header bottom border handled above — no extra left rule here */
+.cal-rbc-wrapper .rbc-time-header .rbc-header + .rbc-header { border-left: none !important; }
 
-/* Date number in week/day header — larger and lighter */
+/* Date number in week/day header — make text slightly smaller */
 .cal-rbc-wrapper .rbc-time-header .rbc-header a,
 .cal-rbc-wrapper .rbc-time-header .rbc-header span,
 .cal-rbc-wrapper .rbc-time-header .rbc-header button {
-  font-size: 18px !important;
-  font-weight: 300 !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
   color: #EBEBF5 !important;
   text-decoration: none !important;
   line-height: 1;
@@ -244,7 +344,7 @@ body {
 .cal-rbc-wrapper .rbc-agenda-empty { color: var(--cal-label); padding: 32px; text-align: center; font-size: 13px; }
 
 /* ── Header content area (no extra space) ───────────────────────────────────── */
-.cal-rbc-wrapper .rbc-time-header-content { border-left: 1px solid var(--cal-sep) !important; min-height: 0; }
+.cal-rbc-wrapper .rbc-time-header-content { border-left: none !important; min-height: 0; }
 .cal-rbc-wrapper .rbc-row.rbc-time-header-cell { min-height: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

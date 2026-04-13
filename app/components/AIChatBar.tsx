@@ -17,6 +17,7 @@ function sanitizeCalendarItem(data: any) {
     recurrenceEndDate: data.recurrenceEndDate ?? null,
     color: data.color ?? "#0A84FF",
     notes: data.notes ?? null,
+    priority: typeof data.priority === "number" ? data.priority : 0,
     source: "user",
     deletedOccurrences: [],
   };
@@ -31,6 +32,7 @@ function sanitizeTodoItem(data: any) {
     recurrence: data.recurrence ?? "NONE",
     recurrenceEndDate: data.recurrenceEndDate ?? null,
     notes: data.notes ?? null,
+    priority: typeof data.priority === "number" ? data.priority : 0,
     isDone: false,
   };
 }
@@ -96,7 +98,6 @@ export default function AIChatBar() {
   };
 
   const getItemType = (item: any): "CalendarItem" | "TodoItem" => {
-    // TodoItems have isDone field, CalendarItems have startDate
     return item.isDone !== undefined ? "TodoItem" : "CalendarItem";
   };
 
@@ -108,14 +109,18 @@ export default function AIChatBar() {
     setLoading(true);
 
     try {
-      // Build compact item context for the AI (title + id + key date)
+      // Build rich item context for the AI (title + id + time + recurrence + priority)
       const itemContext = [
         ...calItemsRef.current.map((i) => ({
           id: i.id,
           title: i.title,
           type: "CalendarItem",
           startDate: i.startDate,
+          startTime: i.startTime ?? null,
+          endTime: i.endTime ?? null,
           recurrence: i.recurrence ?? "NONE",
+          isAllDay: i.isAllDay ?? false,
+          priority: i.priority ?? 0,
         })),
         ...todoItemsRef.current
           .filter((i) => !i.isDone)
@@ -124,6 +129,7 @@ export default function AIChatBar() {
             title: i.title,
             type: "TodoItem",
             deadline: i.deadline,
+            priority: i.priority ?? 0,
           })),
       ];
 
@@ -139,48 +145,47 @@ export default function AIChatBar() {
         return;
       }
 
-      const { userId } = await getCurrentUser();
+      // Normalize operations array — handle old single-op format gracefully
+      let ops: any[] = Array.isArray(data.operations) ? data.operations : [];
+      if (ops.length === 0 && data.action) {
+        ops = [data]; // fallback for old format
+      }
 
-      if (data.action === "add" && data.data) {
-        if (data.itemType === "CalendarItem") {
-          await client.models.CalendarItem.create({ ...sanitizeCalendarItem(data.data), userId });
-        } else {
-          await client.models.TodoItem.create({ ...sanitizeTodoItem(data.data), userId });
-        }
-      } else if (data.action === "edit" && data.data) {
-        // Resolve target — AI can return targetId or targetTitle
-        const target = data.targetId
-          ? findItemById(data.targetId)
-          : findItemByTitle(data.targetTitle ?? data.data?.title);
+      // Skip mutations if pure clarify response
+      const hasMutations = ops.some((op: any) => op.action === "add" || op.action === "edit");
 
-        if (target) {
-          const type = data.itemType ?? getItemType(target);
-          if (type === "CalendarItem") {
-            await client.models.CalendarItem.update({ id: target.id, ...sanitizeCalendarItem({ ...target, ...data.data }) });
-          } else {
-            await client.models.TodoItem.update({ id: target.id, ...sanitizeTodoItem({ ...target, ...data.data }) });
+      if (hasMutations) {
+        const { userId } = await getCurrentUser();
+
+        for (const op of ops) {
+          if (op.action === "add" && op.data) {
+            if (op.itemType === "CalendarItem") {
+              await client.models.CalendarItem.create({ ...sanitizeCalendarItem(op.data), userId });
+            } else {
+              await client.models.TodoItem.create({ ...sanitizeTodoItem(op.data), userId });
+            }
+          } else if (op.action === "edit" && op.data) {
+            if (op.targetDate) {
+              const targets = calItemsRef.current.filter((i) => i.startDate === op.targetDate);
+              for (const t of targets) {
+                await client.models.CalendarItem.update({ id: t.id, ...sanitizeCalendarItem({ ...t, ...op.data }) });
+              }
+            } else {
+              const target = op.targetId
+                ? findItemById(op.targetId)
+                : findItemByTitle(op.targetTitle ?? op.data?.title);
+
+              if (target) {
+                const type = op.itemType ?? getItemType(target);
+                if (type === "CalendarItem") {
+                  await client.models.CalendarItem.update({ id: target.id, ...sanitizeCalendarItem({ ...target, ...op.data }) });
+                } else {
+                  await client.models.TodoItem.update({ id: target.id, ...sanitizeTodoItem({ ...target, ...op.data }) });
+                }
+              }
+            }
           }
-        } else {
-          setChatHistory((p) => [...p, { role: "assistant", content: "I couldn't find that item. Can you be more specific?" }]);
-          setLoading(false);
-          return;
-        }
-      } else if (data.action === "delete") {
-        const target = data.targetId
-          ? findItemById(data.targetId)
-          : findItemByTitle(data.targetTitle);
-
-        if (target) {
-          const type = data.itemType ?? getItemType(target);
-          if (type === "CalendarItem") {
-            await client.models.CalendarItem.delete({ id: target.id });
-          } else {
-            await client.models.TodoItem.delete({ id: target.id });
-          }
-        } else {
-          setChatHistory((p) => [...p, { role: "assistant", content: "I couldn't find that item to delete." }]);
-          setLoading(false);
-          return;
+          // clarify: no mutation needed, message already in data.message
         }
       }
 
@@ -230,7 +235,7 @@ export default function AIChatBar() {
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
           }}
-          placeholder="Add meeting, edit yoga to 7am, delete standup…"
+          placeholder="Add meeting, edit yoga to 7am, what do I have tomorrow?"
           className="flex-1 bg-[#2C2C2E] border border-[#48484A] rounded-full px-3.5 py-1.5 text-[12px] text-white placeholder-[#636366] focus:outline-none focus:border-[#0A84FF]/60 transition-colors"
         />
         <button

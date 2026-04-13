@@ -5,7 +5,7 @@ import TodoSidebar from "@/app/components/TodoSidebar";
 import Topbar from "@/app/components/Topbar";
 import { CalendarProvider, useCalendarContext } from "@/app/components/CalendarContext";
 
-const MIN_SIDEBAR = 240;
+const MIN_SIDEBAR = 300;
 const MAX_SIDEBAR = 540;
 const DEFAULT_SIDEBAR = 320;
 

@@ -1,19 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Menu, ChevronLeft, ChevronRight, Plus, CalendarDays } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Menu, ChevronLeft, ChevronRight, Plus, CalendarDays, Settings, LogOut, User as UserIcon } from "lucide-react";
 import dayjs from "dayjs";
 import { useCalendarContext } from "@/app/components/CalendarContext";
 import { View } from "react-big-calendar";
 import CreateModal from "./CreateModal";
 import CalendarsPanel from "./CalendarsPanel";
 import { client } from "@/app/utils/amplifyClient";
+import { signOut, getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
 
 export default function Topbar() {
   const { date, setDate, view, setView, isSidebarOpen, setIsSidebarOpen } = useCalendarContext();
   const [showCreate, setShowCreate] = useState(false);
   const [showCalendars, setShowCalendars] = useState(false);
   const [calendarSources, setCalendarSources] = useState<any[]>([]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>("U");
+  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -29,15 +33,44 @@ export default function Topbar() {
       } catch { /* model not deployed yet */ }
     };
     init();
-    return () => { active = false; sub?.unsubscribe(); };
+    const fetchUser = async () => {
+      try {
+        const attrs = await fetchUserAttributes();
+        if (attrs.email) setUserEmail(attrs.email);
+      } catch (e) {}
+    };
+    fetchUser();
+    
+    // Close profile menu on outside click
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => { 
+      active = false; 
+      sub?.unsubscribe(); 
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const goToToday = () => setDate(new Date());
 
   const handlePrev = () => {
     const d = dayjs(date);
     if (view === "month") setDate(d.subtract(1, "month").toDate());
-    else if (view === "week") setDate(d.subtract(1, "week").toDate());
+    else if (view === "week") setDate(d.subtract(7, "day").toDate());
     else if (view === "day") setDate(d.subtract(1, "day").toDate());
     else setDate(d.subtract(1, "month").toDate());
   };
@@ -45,7 +78,7 @@ export default function Topbar() {
   const handleNext = () => {
     const d = dayjs(date);
     if (view === "month") setDate(d.add(1, "month").toDate());
-    else if (view === "week") setDate(d.add(1, "week").toDate());
+    else if (view === "week") setDate(d.add(7, "day").toDate());
     else if (view === "day") setDate(d.add(1, "day").toDate());
     else setDate(d.add(1, "month").toDate());
   };
@@ -55,8 +88,8 @@ export default function Topbar() {
     const d = dayjs(date);
     if (view === "day") return d.format("MMM D, YYYY");
     if (view === "week") {
-      const start = d.startOf("week");
-      const end   = d.endOf("week");
+      const start = d.subtract(1, "day");
+      const end = d.add(5, "day");
       return `${start.format("MMM D")} – ${end.format(start.month() === end.month() ? "D, YYYY" : "MMM D, YYYY")}`;
     }
     return d.format("MMMM YYYY");
@@ -81,7 +114,7 @@ export default function Topbar() {
             <Menu size={18} className="text-[#8E8E93]" />
           </button>
           <span className="text-[17px] font-semibold text-white select-none hidden sm:block tracking-tight">
-            Cal
+            Planner
           </span>
         </div>
 
@@ -137,6 +170,35 @@ export default function Topbar() {
                 {v.label}
               </button>
             ))}
+          </div>
+
+          {/* Profile Dropdown */}
+          <div className="relative ml-2" ref={profileRef}>
+            <button
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#3B5BDB] to-[#60A5FA] flex items-center justify-center text-white text-[13px] font-medium shadow-md transition-transform hover:scale-105"
+            >
+              {userEmail.charAt(0).toUpperCase()}
+            </button>
+            
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-[#1C1C1E] border border-[#38383A] rounded-xl shadow-xl overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-[#38383A]">
+                  <p className="text-[13px] text-white font-medium truncate">{userEmail}</p>
+                </div>
+                <div className="p-1">
+                  <button className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[#8E8E93] hover:text-white hover:bg-[#2C2C2E] rounded-lg transition-colors">
+                    <UserIcon size={14} /> Profile Settings
+                  </button>
+                  <button 
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-red-400 hover:text-red-300 hover:bg-[#2C2C2E] rounded-lg transition-colors"
+                  >
+                    <LogOut size={14} /> Sign Out
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>

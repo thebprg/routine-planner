@@ -32,6 +32,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [color, setColor] = useState("#2563EB");
   const [notes, setNotes] = useState("");
+  const [priority, setPriority] = useState(0); // 0-3 stars
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -68,6 +69,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
           recurrenceEndDate: isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
           color,
           notes: notes || null,
+          priority,
           source: "user",
           deletedOccurrences: [],
         });
@@ -89,6 +91,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
           recurrence: recurrence as any,
           recurrenceEndDate: isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
           notes: notes || null,
+          priority,
           isDone: false,
         });
       }
@@ -124,7 +127,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
             {(["event", "todo"] as const).map((t) => (
               <button key={t} type="button" onClick={() => handleTypeChange(t)}
                 className={`flex-1 py-1.5 rounded-lg text-[12px] font-semibold transition-colors capitalize ${itemType === t ? "bg-[#272727] text-white" : "text-gray-500 hover:text-gray-300"}`}>
-                {t === "event" ? "Event" : "Todo"}
+                {t === "event" ? "Event" : "Task"}
               </button>
             ))}
           </div>
@@ -195,12 +198,12 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               <div>
                 <label className={labelCls}>{itemType === "event" ? "Start Time" : "Time (optional)"}</label>
-                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} />
+                <input type="time" required={itemType === "event"} value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} />
               </div>
               {itemType === "event" && (
                 <div>
                   <label className={labelCls}>End Time</label>
-                  <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} />
+                  <input type="time" required value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} />
                 </div>
               )}
             </div>
@@ -214,6 +217,34 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
+          {/* Priority stars */}
+          <div>
+            <label className={labelCls}>Priority</label>
+            <div className="flex gap-1.5 mt-0.5 items-center">
+              {[1, 2, 3].map((star) => {
+                const filled = priority >= star;
+                const isHighest = star === 3 && filled;
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setPriority(priority === star ? 0 : star)}
+                    className="text-[20px] transition-all hover:scale-110 leading-none"
+                    style={{ color: filled ? (isHighest ? "#EF4444" : "#F59E0B") : "#4B5563" }}
+                    title={["Low", "Medium", "High"][star - 1]}
+                  >
+                    {filled ? "★" : "☆"}
+                  </button>
+                );
+              })}
+              {priority > 0 && (
+                <span className="text-[11px] text-gray-500 ml-1">
+                  {["Low", "Medium", "High"][priority - 1]}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Notes */}
           <div>
             <label className={labelCls}>Notes (optional)</label>
@@ -226,7 +257,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
 
           <button type="submit" disabled={saving}
             className="w-full bg-[#3B5BDB] hover:bg-blue-500 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl transition-colors text-[13px] mt-1">
-            {saving ? "Saving…" : `Create ${itemType === "event" ? "Event" : "Todo"}`}
+            {saving ? "Saving…" : `Create ${itemType === "event" ? "Event" : "Task"}`}
           </button>
         </form>
       </div>

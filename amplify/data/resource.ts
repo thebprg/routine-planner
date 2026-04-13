@@ -14,6 +14,7 @@ const schema = a.schema({
       customRecurrenceDays: a.integer().array(),
       color: a.string(),
       notes: a.string(),
+      priority: a.integer(), // 0=none, 1=low, 2=med, 3=high
       // Stores ISO date strings (YYYY-MM-DD) of occurrences deleted individually
       deletedOccurrences: a.string().array(),
       // Source: "user" | "ics" | "holiday"
@@ -48,6 +49,7 @@ const schema = a.schema({
       nextOccurrence: a.datetime(),
       isDone: a.boolean(),
       notes: a.string(),
+      priority: a.integer(), // 0=none, 1=low, 2=med, 3=high
     })
     .authorization((allow) => [allow.owner()]),
 

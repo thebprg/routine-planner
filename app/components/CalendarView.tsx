@@ -4,12 +4,16 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Calendar, dayjsLocalizer, View } from "react-big-calendar";
 import dayjs from "dayjs";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+// @ts-ignore
+import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
+import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import ItemModal from "@/app/components/ItemModal";
 import { useCalendarContext } from "@/app/components/CalendarContext";
 import { client } from "@/app/utils/amplifyClient";
 
-const localizer = dayjsLocalizer(dayjs);
+const baseLocalizer = dayjsLocalizer(dayjs);
 const DEFAULT_COLOR = "#0A84FF";
+const DnDCalendar = withDragAndDrop(Calendar as any);
 
 // ─── Event pill colors ────────────────────────────────────────────────────────
 const COLOR_MAP: Record<string, { bg: string; border: string; text: string }> = {
@@ -34,10 +38,20 @@ function getStyle(event: any) {
 
 const EventPill = ({ event }: { event: any }) => {
   const { bg, border, text } = getStyle(event);
+  const priority = event.priority ?? 0;
+  const starColor = priority === 3 ? "#EF4444" : "#F59E0B";
   return (
     <div className={`relative w-full h-full flex items-center px-1.5 py-0.5 border-l-[3px] rounded-r overflow-hidden ${bg} ${border}`}>
       <span className={`text-[11px] font-medium leading-tight truncate ${text}`}>{event.title}</span>
       {event.isRecurring && <span className="absolute top-0 right-0.5 text-[9px] opacity-40">↻</span>}
+      {priority > 0 && (
+        <span
+          className="absolute bottom-0 right-0.5 text-[8px] leading-none"
+          style={{ color: starColor, opacity: 0.85 }}
+        >
+          {"★".repeat(priority)}
+        </span>
+      )}
     </div>
   );
 };
@@ -102,6 +116,27 @@ export default function CalendarView() {
   const [overridesMap, setOverridesMap] = useState<Map<string, Map<string, any>>>(new Map());
   const [externalEvents, setExternalEvents] = useState<any[]>([]);
 
+  // Force Week view to be a rolling 7-day period starting from the current `date` state
+  const customLocalizer = React.useMemo(() => {
+    const loc = dayjsLocalizer(dayjs);
+    const origStart = loc.startOf;
+    const origEnd = loc.endOf;
+    
+    loc.startOf = (d: any, unit: any, firstOfWeek?: any) => {
+      // @ts-ignore
+      if (view === "week" && unit === "week") return dayjs(d).subtract(1, "day").startOf("day").toDate();
+      // @ts-ignore
+      return origStart.call(loc, d, unit, firstOfWeek);
+    };
+    loc.endOf = (d: any, unit: any, firstOfWeek?: any) => {
+      // @ts-ignore
+      if (view === "week" && unit === "week") return dayjs(d).add(5, "day").endOf("day").toDate();
+      // @ts-ignore
+      return origEnd.call(loc, d, unit, firstOfWeek);
+    };
+    return loc;
+  }, [view]);
+
   // Generous expansion range — 3 months back, 12 months forward
   const expandStart = dayjs(date).subtract(3, "month").toDate();
   const expandEnd   = dayjs(date).add(12, "month").toDate();
@@ -136,6 +171,7 @@ export default function CalendarView() {
               recurrenceEndDate: i.recurrenceEndDate ?? null,
               color: i.color ?? DEFAULT_COLOR,
               notes: i.notes,
+              priority: i.priority ?? 0,
               deletedOccurrences: (i.deletedOccurrences as string[] | null) ?? [],
               source: i.source ?? "user",
               raw: i,
@@ -291,17 +327,71 @@ export default function CalendarView() {
     return t;
   })();
 
+  const onEventDrop = async ({ event, start, end }: any) => {
+    if (event.modelType === "TodoItem" || event.modelType === "external") return;
+    
+    // We only process CalendarItems. If recurring, apply override.
+    try {
+      const parentId = event.raw?.id ?? event.id;
+      const s = dayjs(start).format("HH:mm:ss");
+      const e = dayjs(end).format("HH:mm:ss");
+      const startDate = dayjs(start).format("YYYY-MM-DD");
+      
+      // OPTIMISTIC UI UPDATE
+      if (event.isRecurring) {
+        setOverridesMap(prev => {
+          const m = new Map(prev);
+          const parentMap = new Map(m.get(parentId) || new Map());
+          parentMap.set(dayjs(event.start).format("YYYY-MM-DD"), { startTime: s, endTime: e });
+          m.set(parentId, parentMap);
+          return m;
+        });
+      } else {
+        setSourceItems(prev => prev.map((item) => {
+          if (item.raw.id === parentId) {
+            return {
+              ...item,
+              start: new Date(start),
+              end: new Date(end)
+            };
+          }
+          return item;
+        }));
+      }
+
+      if (event.isRecurring) {
+        // Create an EventOverride
+        await client.models.EventOverride.create({
+          parentId,
+          occurrenceDate: dayjs(event.start).format("YYYY-MM-DD"), // old date
+          startTime: s,
+          endTime: e,
+        });
+      } else {
+        await client.models.CalendarItem.update({
+          id: parentId,
+          startDate: startDate,
+          startTime: s,
+          endTime: e,
+        });
+      }
+    } catch (err) {
+      console.error("Drag drop error", err);
+    }
+  };
+
   return (
     <>
       <div className="h-full w-full cal-rbc-wrapper">
-        <Calendar
-          localizer={localizer}
+        <DnDCalendar
+          localizer={customLocalizer}
           events={events}
           startAccessor="start"
           endAccessor="end"
           style={{ height: "100%" }}
           view={view as View}
           onView={(v) => setView(v)}
+          views={["month", "week", "day", "agenda"]}
           date={date}
           onNavigate={(d) => setDate(d)}
           scrollToTime={scrollTime}
@@ -317,6 +407,11 @@ export default function CalendarView() {
             eventTimeRangeEndFormat: () => "",
             timeGutterFormat: (d: Date) => dayjs(d).format("h A"),
           }}
+          draggableAccessor={(event: any) => !event.isAllDay && event.modelType !== 'external' && event.modelType !== 'TodoItem'}
+          resizableAccessor={(event: any) => !event.isAllDay && event.modelType !== 'external' && event.modelType !== 'TodoItem'}
+          onEventDrop={onEventDrop}
+          onEventResize={onEventDrop}
+          resizable
         />
       </div>
       {selectedItem && <ItemModal item={selectedItem} onClose={() => setSelectedItem(null)} />}
