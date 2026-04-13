@@ -1,6 +1,97 @@
 import { NextResponse } from "next/server";
 import dayjs from "dayjs";
 
+const AI_MODEL = process.env.AI_MODEL || "gemma-4-31b-it";
+const IS_GEMMA_MODEL = AI_MODEL.startsWith("gemma");
+const RESPONSE_FUNCTION_NAME = "planner_response";
+
+const responseJsonSchema = {
+  type: "object",
+  properties: {
+    operations: {
+      type: "array",
+      description: "List of planner operations to perform. Use an empty array for pure question-answer responses.",
+      items: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["add", "edit", "clarify"],
+            description: "Operation type.",
+          },
+          itemType: {
+            type: "string",
+            enum: ["CalendarItem", "TodoItem"],
+            description: "Target item kind when adding or editing.",
+          },
+          targetId: {
+            type: "string",
+            description: "Exact existing item id for edits when known.",
+          },
+          targetTitle: {
+            type: "string",
+            description: "Title of the item to edit when targetId is not known.",
+          },
+          targetDate: {
+            type: "string",
+            description: "Date in YYYY-MM-DD when editing items by date.",
+          },
+          data: {
+            type: "object",
+            description: "Payload for add or edit operations. Omit fields that are unknown or not needed.",
+            properties: {
+              title: { type: "string" },
+              isAllDay: { type: "boolean" },
+              startDate: { type: "string" },
+              startTime: { type: "string" },
+              endTime: { type: "string" },
+              deadline: { type: "string" },
+              hasTime: { type: "boolean" },
+              isRecurring: { type: "boolean" },
+              recurrence: {
+                type: "string",
+                enum: ["DAILY", "WEEKLY", "MONTHLY", "WEEKDAYS", "WEEKENDS", "NONE"],
+              },
+              recurrenceEndDate: { type: "string" },
+              priority: { type: "integer" },
+              color: { type: "string" },
+              notes: { type: "string" },
+            },
+            required: [],
+          },
+        },
+        required: ["action"],
+      },
+    },
+    message: {
+      type: "string",
+      description: "Friendly assistant response to show in chat.",
+    },
+  },
+  required: ["operations", "message"],
+} as const;
+
+const plannerFunctionDeclaration = {
+  name: RESPONSE_FUNCTION_NAME,
+  description:
+    "Return the planner's structured response. Always use this function for every user message so the app receives consistent structured data.",
+  parameters: responseJsonSchema,
+} as const;
+
+function buildGenerationConfig() {
+  if (IS_GEMMA_MODEL) {
+    return {
+      temperature: 0.1,
+    };
+  }
+
+  return {
+    temperature: 0.1,
+    responseMimeType: "application/json",
+    responseJsonSchema,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -18,7 +109,11 @@ export async function POST(req: Request) {
     const systemPrompt = `You are Planner, a smart scheduling AI assistant embedded in a calendar app.
 Today is ${todayFull} (${today}). Current time is ${time}.
 
-Return ONLY a single valid JSON object. No markdown, no code fences, no explanation text.
+For every request, call the function named "${RESPONSE_FUNCTION_NAME}".
+Do not answer in free-form text when a function call is possible.
+If you do answer with plain text, return ONLY a single valid JSON object. No markdown, no code fences, no explanation text.
+Your full plain-text response must begin with "{" and end with "}".
+Do not include any prose before or after the JSON object.
 
 JSON shape:
 {
@@ -149,7 +244,7 @@ Rules:
     messages.push({ role: "user", content: message });
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,10 +253,22 @@ Rules:
             role: m.role === "model" ? "model" : "user",
             parts: [{ text: m.content }],
           })),
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: "application/json",
-          },
+          generationConfig: buildGenerationConfig(),
+          ...(IS_GEMMA_MODEL
+            ? {
+                tools: [
+                  {
+                    functionDeclarations: [plannerFunctionDeclaration],
+                  },
+                ],
+                toolConfig: {
+                  functionCallingConfig: {
+                    mode: "ANY",
+                    allowedFunctionNames: [RESPONSE_FUNCTION_NAME],
+                  },
+                },
+              }
+            : {}),
         }),
       }
     );
@@ -172,15 +279,21 @@ Rules:
       return NextResponse.json({ error: "Failed to communicate with AI model" }, { status: 500 });
     }
 
-    const geminiData = await response.json();
-    const aiText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
     let parsed;
     try {
-      const cleaned = aiText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-      const match = cleaned.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("No JSON object found");
-      parsed = JSON.parse(match[0]);
+      const geminiData = await response.json();
+      const parts = geminiData?.candidates?.[0]?.content?.parts ?? [];
+      const functionCall = parts.find((part: any) => part?.functionCall)?.functionCall;
+
+      if (functionCall?.name === RESPONSE_FUNCTION_NAME && functionCall?.args) {
+        parsed = functionCall.args;
+      } else {
+        const aiText = parts.map((part: any) => part?.text ?? "").join("\n").trim();
+        const cleaned = aiText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (!match) throw new Error("No JSON object found");
+        parsed = JSON.parse(match[0]);
+      }
 
       // Normalize: support old single-op format from model responding incorrectly
       if (!parsed.operations && parsed.action) {
@@ -189,8 +302,8 @@ Rules:
       if (!Array.isArray(parsed.operations)) {
         parsed.operations = [];
       }
-    } catch {
-      console.error("Failed to parse AI JSON:", aiText);
+    } catch (parseError) {
+      console.error("Failed to parse AI response:", parseError);
       return NextResponse.json(
         { operations: [], message: "I didn't quite understand that. Could you rephrase?" },
         { status: 200 }
