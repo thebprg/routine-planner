@@ -14,6 +14,7 @@ frontend:
         - npm install
     build:
       commands:
+        - env | grep -e GEMINI_API_KEY >> .env.production
         - npm run build
   artifacts:
     baseDirectory: .next
