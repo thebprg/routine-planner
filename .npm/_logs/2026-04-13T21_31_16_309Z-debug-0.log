@@ -1,0 +1,97 @@
+0 verbose cli /Users/bhanuprakashreddygundam/.nvm/versions/node/v22.22.1/bin/node /Users/bhanuprakashreddygundam/.nvm/versions/node/v22.22.1/bin/npm
+1 info using npm@10.9.3
+2 info using node@v22.22.1
+3 silly config load:file:/Users/bhanuprakashreddygundam/.nvm/versions/node/v22.22.1/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/bhanuprakashreddygundam/Desktop/wksp/Projects/routine-planner/.npmrc
+5 silly config load:file:/Users/bhanuprakashreddygundam/.npmrc
+6 silly config load:file:/Users/bhanuprakashreddygundam/.nvm/versions/node/v22.22.1/etc/npmrc
+7 verbose title npm ci
+8 verbose argv "ci" "--cache" ".npm" "--prefer-offline"
+9 verbose logfile logs-max:10 dir:/Users/bhanuprakashreddygundam/Desktop/wksp/Projects/routine-planner/.npm/_logs/2026-04-13T21_31_16_309Z-
+10 verbose logfile /Users/bhanuprakashreddygundam/Desktop/wksp/Projects/routine-planner/.npm/_logs/2026-04-13T21_31_16_309Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:4345298944 maxSize:1086324736 maxEntrySize:543162368
+13 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with ENOTFOUND
+14 silly idealTree buildDeps
+15 silly fetch manifest json-schema-to-ts@^3.1.1
+16 silly packumentCache full:https://registry.npmjs.org/json-schema-to-ts cache-miss
+17 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 1 failed with ENOTFOUND
+18 http fetch GET https://registry.npmjs.org/npm attempt 2 failed with ENOTFOUND
+19 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 2 failed with ENOTFOUND
+20 http fetch GET https://registry.npmjs.org/npm attempt 3 failed with ENOTFOUND
+21 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 3 failed with ENOTFOUND
+22 silly placeDep node_modules/@aws-amplify/data-construct/node_modules/@aws-amplify/ai-constructs json-schema-to-ts@ OK for: @aws-amplify/ai-constructs@1.6.1 want: ^3.1.1
+23 silly fetch manifest zod@3.25.17
+24 silly packumentCache full:https://registry.npmjs.org/zod cache-miss
+25 http fetch GET https://registry.npmjs.org/zod attempt 1 failed with ENOTFOUND
+26 http fetch GET https://registry.npmjs.org/zod attempt 2 failed with ENOTFOUND
+27 http fetch GET https://registry.npmjs.org/zod attempt 3 failed with ENOTFOUND
+28 silly placeDep node_modules/@aws-amplify/data-construct zod@ REPLACE for: @aws-amplify/backend-output-schemas@1.8.0 want: 3.25.17
+29 warn ERESOLVE overriding peer dependency {
+29 warn ERESOLVE   code: 'ERESOLVE',
+29 warn ERESOLVE   edge: {
+29 warn ERESOLVE     type: 'peer',
+29 warn ERESOLVE     name: 'zod',
+29 warn ERESOLVE     spec: '3.25.17',
+29 warn ERESOLVE     error: 'PEER LOCAL',
+29 warn ERESOLVE     from: {
+29 warn ERESOLVE       name: '@aws-amplify/backend-output-schemas',
+29 warn ERESOLVE       version: '1.8.0',
+29 warn ERESOLVE       location: 'node_modules/@aws-amplify/data-construct/node_modules/@aws-amplify/backend-output-schemas',
+29 warn ERESOLVE       isWorkspace: false,
+29 warn ERESOLVE       dependents: [Array]
+29 warn ERESOLVE     }
+29 warn ERESOLVE   },
+29 warn ERESOLVE   dep: {
+29 warn ERESOLVE     name: 'zod',
+29 warn ERESOLVE     version: undefined,
+29 warn ERESOLVE     errors: [ [FetchError] ],
+29 warn ERESOLVE     package: {},
+29 warn ERESOLVE     whileInstalling: {
+29 warn ERESOLVE       name: '@aws-amplify/backend-output-schemas',
+29 warn ERESOLVE       version: '1.8.0',
+29 warn ERESOLVE       path: '/Users/bhanuprakashreddygundam/Desktop/wksp/Projects/routine-planner/node_modules/@aws-amplify/data-construct/node_modules/@aws-amplify/backend-output-schemas'
+29 warn ERESOLVE     },
+29 warn ERESOLVE     location: 'node_modules/zod',
+29 warn ERESOLVE     isWorkspace: false,
+29 warn ERESOLVE     dependents: [ [Object] ]
+29 warn ERESOLVE   },
+29 warn ERESOLVE   force: false,
+29 warn ERESOLVE   isMine: false,
+29 warn ERESOLVE   strictPeerDeps: false,
+29 warn ERESOLVE   current: {
+29 warn ERESOLVE     name: 'zod',
+29 warn ERESOLVE     version: '3.25.17',
+29 warn ERESOLVE     location: 'node_modules/@aws-amplify/data-construct/node_modules/@aws-amplify/backend-output-schemas/node_modules/zod',
+29 warn ERESOLVE     isWorkspace: false,
+29 warn ERESOLVE     dependents: []
+29 warn ERESOLVE   }
+29 warn ERESOLVE }
+30 silly fetch manifest @aws-sdk/eventstream-handler-node@3.821.0
+31 silly packumentCache full:https://registry.npmjs.org/@aws-sdk%2feventstream-handler-node cache-miss
+32 http fetch GET https://registry.npmjs.org/@aws-sdk%2feventstream-handler-node attempt 1 failed with ENOTFOUND
+33 http fetch GET https://registry.npmjs.org/@aws-sdk%2feventstream-handler-node attempt 2 failed with ENOTFOUND
+34 http fetch GET https://registry.npmjs.org/@aws-sdk%2feventstream-handler-node attempt 3 failed with ENOTFOUND
+35 silly fetch manifest @aws-sdk/middleware-eventstream@3.821.0
+36 silly packumentCache full:https://registry.npmjs.org/@aws-sdk%2fmiddleware-eventstream cache-miss
+37 http fetch GET https://registry.npmjs.org/@aws-sdk%2fmiddleware-eventstream attempt 1 failed with ENOTFOUND
+38 http fetch GET https://registry.npmjs.org/@aws-sdk%2fmiddleware-eventstream attempt 2 failed with ENOTFOUND
+39 http fetch GET https://registry.npmjs.org/@aws-sdk%2fmiddleware-eventstream attempt 3 failed with ENOTFOUND
+40 silly placeDep node_modules/@aws-amplify/data-construct/node_modules/@aws-sdk/client-bedrock-runtime @aws-sdk/eventstream-handler-node@ OK for: @aws-sdk/client-bedrock-runtime@3.828.0 want: 3.821.0
+41 silly placeDep node_modules/@aws-amplify/data-construct/node_modules/@aws-sdk/client-bedrock-runtime @aws-sdk/middleware-eventstream@ OK for: @aws-sdk/client-bedrock-runtime@3.828.0 want: 3.821.0
+42 silly fetch manifest fast-xml-parser@4.4.1
+43 silly packumentCache full:https://registry.npmjs.org/fast-xml-parser cache-miss
+44 http fetch GET https://registry.npmjs.org/fast-xml-parser attempt 1 failed with ENOTFOUND
+45 http fetch GET https://registry.npmjs.org/fast-xml-parser attempt 2 failed with ENOTFOUND
+46 http fetch GET https://registry.npmjs.org/fast-xml-parser attempt 3 failed with ENOTFOUND
+47 silly placeDep node_modules/@aws-amplify/data-construct/node_modules/@aws-sdk/core fast-xml-parser@ OK for: @aws-sdk/core@3.635.0 want: 4.4.1
+48 silly fetch manifest json-schema-to-ts@^3.1.1
+49 silly packumentCache full:https://registry.npmjs.org/json-schema-to-ts cache-miss
+50 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 1 failed with ENOTFOUND
+51 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 2 failed with ENOTFOUND
+52 http fetch GET https://registry.npmjs.org/json-schema-to-ts attempt 3 failed with ENOTFOUND
+53 silly placeDep node_modules/@aws-amplify/graphql-api-construct/node_modules/@aws-amplify/ai-constructs json-schema-to-ts@ OK for: @aws-amplify/ai-constructs@1.6.1 want: ^3.1.1
+54 silly fetch manifest zod@3.25.17
+55 silly packumentCache full:https://registry.npmjs.org/zod cache-miss
+56 http fetch GET https://registry.npmjs.org/zod attempt 1 failed with ENOTFOUND
+57 http fetch GET https://registry.npmjs.org/zod attempt 2 failed with ENOTFOUND
