@@ -10,6 +10,7 @@ import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import ItemModal from "@/app/components/ItemModal";
 import { useCalendarContext } from "@/app/components/CalendarContext";
 import { client } from "@/app/utils/amplifyClient";
+import { CALENDAR_STEP_MINUTES, snapEventRange } from "@/app/utils/scheduling";
 
 const baseLocalizer = dayjsLocalizer(dayjs);
 const DEFAULT_COLOR = "#0A84FF";
@@ -270,7 +271,9 @@ export default function CalendarView() {
                           : dayjs(e.startDate + (e.startTime ? `T${e.startTime}` : "")).toDate(),
                         end: e.isAllDay
                           ? dayjs(e.startDate).add(1, "day").toDate()
-                          : dayjs(e.startDate + (e.endTime ? `T${e.endTime}` : "")).add(1, "hour").toDate(),
+                          : e.endTime
+                          ? dayjs(`${e.startDate}T${e.endTime}`).toDate()
+                          : dayjs(e.startDate + (e.startTime ? `T${e.startTime}` : "")).add(1, "hour").toDate(),
                         color: src.color ?? "#0A84FF",
                         isRecurring: false, recurrence: "NONE",
                         deletedOccurrences: [],
@@ -329,30 +332,44 @@ export default function CalendarView() {
 
   const onEventDrop = async ({ event, start, end }: any) => {
     if (event.modelType === "TodoItem" || event.modelType === "external") return;
-    
+
     // We only process CalendarItems. If recurring, apply override.
     try {
       const parentId = event.raw?.id ?? event.id;
-      const s = dayjs(start).format("HH:mm:ss");
-      const e = dayjs(end).format("HH:mm:ss");
-      const startDate = dayjs(start).format("YYYY-MM-DD");
-      
+      const originalOccurrenceDate = event._occurrenceDate ?? dayjs(event.start).format("YYYY-MM-DD");
+      const rawStart = event.isRecurring && dayjs(start).format("YYYY-MM-DD") !== originalOccurrenceDate
+        ? dayjs(`${originalOccurrenceDate}T${dayjs(start).format("HH:mm")}`).toDate()
+        : start;
+      const rawEnd = event.isRecurring && dayjs(start).format("YYYY-MM-DD") !== originalOccurrenceDate
+        ? dayjs(rawStart).add(dayjs(end).diff(dayjs(start), "minute"), "minute").toDate()
+        : end;
+      const snapped = snapEventRange(rawStart, rawEnd);
+      const s = dayjs(snapped.start).format("HH:mm:ss");
+      const e = dayjs(snapped.end).format("HH:mm:ss");
+      const startDate = dayjs(snapped.start).format("YYYY-MM-DD");
+
       // OPTIMISTIC UI UPDATE
       if (event.isRecurring) {
         setOverridesMap(prev => {
           const m = new Map(prev);
           const parentMap = new Map(m.get(parentId) || new Map());
-          parentMap.set(dayjs(event.start).format("YYYY-MM-DD"), { startTime: s, endTime: e });
+          parentMap.set(originalOccurrenceDate, { startTime: s, endTime: e });
           m.set(parentId, parentMap);
           return m;
         });
       } else {
         setSourceItems(prev => prev.map((item) => {
-          if (item.raw.id === parentId) {
+          if ((item.raw?.id ?? item.id) === parentId) {
             return {
               ...item,
-              start: new Date(start),
-              end: new Date(end)
+              start: snapped.start,
+              end: snapped.end,
+              raw: {
+                ...item.raw,
+                startDate,
+                startTime: s,
+                endTime: e,
+              },
             };
           }
           return item;
@@ -363,7 +380,7 @@ export default function CalendarView() {
         // Create an EventOverride
         await client.models.EventOverride.create({
           parentId,
-          occurrenceDate: dayjs(event.start).format("YYYY-MM-DD"), // old date
+          occurrenceDate: originalOccurrenceDate,
           startTime: s,
           endTime: e,
         });
@@ -395,6 +412,8 @@ export default function CalendarView() {
           date={date}
           onNavigate={(d) => setDate(d)}
           scrollToTime={scrollTime}
+          step={CALENDAR_STEP_MINUTES}
+          timeslots={2}
           components={{ toolbar: () => null, event: EventPill }}
           eventPropGetter={() => ({ style: { backgroundColor: "transparent", padding: 0, border: "none" } })}
           onSelectEvent={(event) => {

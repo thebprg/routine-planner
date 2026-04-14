@@ -4,10 +4,9 @@ import React, { useState, useEffect } from "react";
 import AIChatBar from "@/app/components/AIChatBar";
 import ItemModal from "@/app/components/ItemModal";
 import { client } from "@/app/utils/amplifyClient";
+import { getTodoStatus, type TodoStatus } from "@/app/utils/scheduling";
 import dayjs from "dayjs";
 import { RefreshCw, ChevronDown, Check, Pencil, Trash2, Calendar } from "lucide-react";
-
-type TodoStatus = "past-due" | "today" | "upcoming" | "no-deadline";
 
 interface TodoEntry {
   id: string;
@@ -64,14 +63,11 @@ export default function TodoSidebar() {
         next: ({ items: raw }) => {
           if (!active) return;
           const mapped: TodoEntry[] = raw.map((i) => {
-            let status: TodoStatus = "no-deadline";
+            const status = getTodoStatus(i.deadline as string | null, i.hasTime ?? false);
             let dateStr = "No deadline";
             if (i.deadline) {
               const dt = dayjs(i.deadline as string);
-              if (dt.isBefore(dayjs(), "day")) status = "past-due";
-              else if (dt.isSame(dayjs(), "day")) status = "today";
-              else status = "upcoming";
-              dateStr = (i.hasTime) ? dt.format("MMM D · h:mm A") : dt.format("MMM D, YYYY");
+              dateStr = i.hasTime ? dt.format("MMM D · h:mm A") : dt.format("MMM D, YYYY");
             }
             return {
               id: i.id,

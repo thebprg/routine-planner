@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Pencil, Trash2, Check, ArrowUp, Loader2, RefreshCw } from "lucide-react";
 import dayjs from "dayjs";
 import { client } from "@/app/utils/amplifyClient";
+import { buildCalendarItemInput, buildTodoDeadline, buildTodoItemInput, CALENDAR_STEP_MINUTES, getTodoFormValues } from "@/app/utils/scheduling";
 
 const COLOR_SWATCHES = [
   { label: "Blue",   hex: "#2563EB" },
@@ -41,8 +42,13 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
   const [editRecurrenceEndDate, setEditRecurrenceEndDate] = useState(
     item.raw?.recurrenceEndDate ?? ""
   );
+  const initialTodoValues = getTodoFormValues(item.raw?.deadline ?? null, item.raw?.hasTime ?? false);
+  const [editTodoDate, setEditTodoDate] = useState(initialTodoValues.date);
+  const [editTodoTime, setEditTodoTime] = useState(initialTodoValues.time);
+  const [editTodoHasTime, setEditTodoHasTime] = useState(initialTodoValues.hasTime);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   // ── AI ─────────────────────────────────────────────────────────────────────
   const [aiMessage, setAiMessage] = useState("");
@@ -58,6 +64,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
   // ── Edit flow ──────────────────────────────────────────────────────────────
   // Step 1: User clicks edit pencil
   const startEdit = () => {
+    setSaveError("");
     if (isRecurring && modelType === "CalendarItem") {
       setShowScopeDialog("edit"); // Show scope picker first
     } else {
@@ -75,14 +82,25 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
   // Step 3: User clicks save in form → commit
   const commitEdit = async () => {
     setSaving(true);
-    setEditing(false);
     const scope = editScope ?? "all";
     try {
+      setSaveError("");
+
       const startD = dayjs(editStart);
       const endD = editEnd ? dayjs(editEnd) : null;
 
+      if (modelType === "CalendarItem" && (!startD.isValid() || !endD?.isValid() || !endD.isAfter(startD))) {
+        setSaveError("Event end time must be after the start time.");
+        return;
+      }
+
+      if (modelType === "TodoItem" && editTodoHasTime && !editTodoDate) {
+        setSaveError("Add a date before setting a task time.");
+        return;
+      }
+
       if (scope === "this" && modelType === "CalendarItem") {
-        await client.models.EventOverride.create({
+        const payload: any = {
           parentId,
           occurrenceDate,
           title: editTitle !== item.title ? editTitle : undefined,
@@ -91,11 +109,17 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
           color: editColor !== item.color ? editColor : undefined,
           notes: editNotes !== item.notes ? editNotes : undefined,
           isDeleted: false,
-        });
+        };
+        if (payload.title == null) delete payload.title;
+        if (payload.startTime == null) delete payload.startTime;
+        if (payload.endTime == null) delete payload.endTime;
+        if (payload.color == null) delete payload.color;
+        if (payload.notes == null) delete payload.notes;
+        await client.models.EventOverride.create(payload);
       } else {
         // "all" — or non-recurring
         if (modelType === "CalendarItem") {
-          await client.models.CalendarItem.update({
+          const payload = buildCalendarItemInput({
             id: parentId,
             title: editTitle,
             startDate: startD.format("YYYY-MM-DD"),
@@ -106,18 +130,24 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
             priority: editPriority,
             recurrenceEndDate: editRecurrenceEndDate || null,
           });
+          await client.models.CalendarItem.update(payload);
         } else {
-          await client.models.TodoItem.update({
+          const { deadline, hasTime } = buildTodoDeadline(editTodoDate, editTodoHasTime ? editTodoTime : null);
+          const payload = buildTodoItemInput({
             id: parentId,
             title: editTitle,
-            deadline: startD.toISOString(),
+            deadline,
+            hasTime,
             notes: editNotes || null,
             priority: editPriority,
           });
+          await client.models.TodoItem.update(payload);
         }
       }
+      setEditing(false);
     } catch (e) {
       console.error("Edit error:", e);
+      setSaveError("Failed to save changes.");
     } finally {
       setSaving(false);
       setEditScope(null);
@@ -238,7 +268,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                   {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                 </button>
                 <button
-                  onClick={() => { setEditing(false); setEditScope(null); }}
+                  onClick={() => { setEditing(false); setEditScope(null); setSaveError(""); }}
                   className="p-1.5 rounded-lg text-gray-400 hover:bg-[#2A2A2A] transition-colors"
                 >
                   <X size={13} />
@@ -332,25 +362,107 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
 
           {/* Timing — stacked vertically */}
           {!item.isAllDay && (
-            <div className="space-y-3">
-              <div>
-                <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">
-                  Start
-                </div>
-                {editing ? (
-                  <input
-                    type="datetime-local"
-                    value={editStart}
-                    onChange={(e) => setEditStart(e.target.value)}
-                    className="w-full bg-[#1F1F1F] border border-[#333] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none focus:border-[#3B5BDB] [color-scheme:dark]"
-                  />
-                ) : (
-                  <div className="text-[13px] text-white">
-                    {item.start ? dayjs(item.start).format("MMM D, YYYY · h:mm A") : "—"}
+            modelType === "TodoItem" ? (
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">
+                    Date
                   </div>
-                )}
+                  {editing ? (
+                    <div className="space-y-2">
+                      <input
+                        type="date"
+                        value={editTodoDate}
+                        onChange={(e) => {
+                          const nextDate = e.target.value;
+                          setEditTodoDate(nextDate);
+                          if (!nextDate) {
+                            setEditTodoTime("");
+                            setEditTodoHasTime(false);
+                          }
+                        }}
+                        className="w-full bg-[#1F1F1F] border border-[#333] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none focus:border-[#3B5BDB] [color-scheme:dark]"
+                      />
+                      {editTodoDate && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditTodoDate("");
+                            setEditTodoTime("");
+                            setEditTodoHasTime(false);
+                          }}
+                          className="text-[11px] text-gray-500 hover:text-white transition-colors"
+                        >
+                          Clear date
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[13px] text-white">
+                      {item.raw?.deadline ? dayjs(item.raw.deadline).format("MMM D, YYYY") : "No date"}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">
+                    Time
+                  </div>
+                  {editing ? (
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-[12px] text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={editTodoHasTime}
+                          disabled={!editTodoDate}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setEditTodoHasTime(checked);
+                            if (!checked) {
+                              setEditTodoTime("");
+                            }
+                          }}
+                          className="w-4 h-4 rounded accent-[#3B5BDB]"
+                        />
+                        Set a time
+                      </label>
+                      {editTodoHasTime && (
+                        <input
+                          type="time"
+                          step={CALENDAR_STEP_MINUTES * 60}
+                          value={editTodoTime}
+                          onChange={(e) => setEditTodoTime(e.target.value)}
+                          className="w-full bg-[#1F1F1F] border border-[#333] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none focus:border-[#3B5BDB] [color-scheme:dark]"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[13px] text-white">
+                      {item.raw?.deadline && item.raw?.hasTime ? dayjs(item.raw.deadline).format("h:mm A") : "No specific time"}
+                    </div>
+                  )}
+                </div>
               </div>
-              {modelType === "CalendarItem" && (
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">
+                    Start
+                  </div>
+                  {editing ? (
+                    <input
+                      type="datetime-local"
+                      step={CALENDAR_STEP_MINUTES * 60}
+                      value={editStart}
+                      onChange={(e) => setEditStart(e.target.value)}
+                      className="w-full bg-[#1F1F1F] border border-[#333] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none focus:border-[#3B5BDB] [color-scheme:dark]"
+                    />
+                  ) : (
+                    <div className="text-[13px] text-white">
+                      {item.start ? dayjs(item.start).format("MMM D, YYYY · h:mm A") : "—"}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <div className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide mb-1.5">
                     End
@@ -358,6 +470,7 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                   {editing ? (
                     <input
                       type="datetime-local"
+                      step={CALENDAR_STEP_MINUTES * 60}
                       value={editEnd}
                       onChange={(e) => setEditEnd(e.target.value)}
                       className="w-full bg-[#1F1F1F] border border-[#333] rounded-lg px-3 py-2 text-[12px] text-white focus:outline-none focus:border-[#3B5BDB] [color-scheme:dark]"
@@ -368,8 +481,8 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )
           )}
 
           {item.isAllDay && (
@@ -378,6 +491,12 @@ export default function ItemModal({ item, onClose }: { item: any; onClose: () =>
               <div className="text-[13px] text-white">
                 {item.start ? dayjs(item.start).format("MMM D, YYYY") : "—"}
               </div>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="text-[12px] text-red-400">
+              {saveError}
             </div>
           )}
 

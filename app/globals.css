@@ -213,14 +213,52 @@ body {
 }
 
 /* ── DRAG & DROP RESIZE HANDLES ─────────────────────────────────────────────── */
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-event {
+  transition: none !important;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resizable {
+  overflow: visible;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resize-ns-anchor {
+  left: 0;
+  right: 0;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  z-index: 4;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resize-ns-anchor::after {
+  content: "";
+  width: 16px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.7);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resize-ns-anchor:first-child {
+  top: 0;
+  align-items: flex-start;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resize-ns-anchor:last-child {
+  bottom: 0;
+  align-items: flex-end;
+}
+
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-event:hover .rbc-addons-dnd-resize-ns-anchor::after,
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resizable:hover .rbc-addons-dnd-resize-ns-anchor::after,
+.cal-rbc-wrapper .rbc-addons-dnd .rbc-addons-dnd-resize-ns-anchor:hover::after {
+  opacity: 1;
+}
+
 /* Convert the equal sign '=' to a single bright line */
 .cal-rbc-wrapper .rbc-addons-dnd-resize-ns-icon {
-  background-image: none !important;
-  border-top: none !important;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.7) !important;
-  height: 2px !important;
-  width: 16px !important;
-  margin: 1px auto !important;
+  display: none !important;
 }
 
 /* Hide the horizontal resize handles (sometimes appear for all day events) */
@@ -322,7 +360,7 @@ body {
   border: none !important;
   background: transparent !important;
   border-radius: 4px !important;
-  overflow: hidden;
+  overflow: visible;
 }
 .cal-rbc-wrapper .rbc-event:focus { outline: none !important; }
 .cal-rbc-wrapper .rbc-event-label { display: none !important; }

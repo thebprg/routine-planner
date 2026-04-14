@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { X, ChevronDown } from "lucide-react";
 import { client } from "@/app/utils/amplifyClient";
+import { buildCalendarItemInput, buildTodoDeadline, buildTodoItemInput, CALENDAR_STEP_MINUTES } from "@/app/utils/scheduling";
 import dayjs from "dayjs";
 
 // ─── Color palette ─────────────────────────────────────────────────────────────
@@ -42,7 +43,12 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
   const handleTypeChange = (t: "event" | "todo") => {
     setItemType(t);
     if (t === "event" && !date) setDate(dayjs().format("YYYY-MM-DD"));
-    if (t === "todo") setDate(""); // clear default for todos
+    if (t === "todo") {
+      setDate("");
+      setStartTime("");
+      setEndTime("");
+      setIsAllDay(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,6 +56,15 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
     if (!title.trim()) return;
     // Events require a date; todos can have no date
     if (itemType === "event" && !date) { setError("Please set a date for the event."); return; }
+    if (itemType === "todo" && startTime && !date) { setError("Add a date before setting a task time."); return; }
+    if (itemType === "event" && !isAllDay) {
+      const startAt = dayjs(`${date}T${startTime}`);
+      const endAt = dayjs(`${date}T${endTime}`);
+      if (!startAt.isValid() || !endAt.isValid() || !endAt.isAfter(startAt)) {
+        setError("Event end time must be after the start time.");
+        return;
+      }
+    }
     setError("");
     setSaving(true);
 
@@ -58,7 +73,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
       const { userId } = await getCurrentUser();
 
       if (itemType === "event") {
-        await client.models.CalendarItem.create({
+        const payload = buildCalendarItemInput({
           userId,
           title,
           isAllDay,
@@ -73,16 +88,12 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
           source: "user",
           deletedOccurrences: [],
         });
+        await client.models.CalendarItem.create(payload);
       } else {
         // date is optional for todos
-        const hasTime = !!startTime && !!date;
-        const deadline = date
-          ? hasTime
-            ? dayjs(`${date}T${startTime}`).toISOString()
-            : dayjs(date).startOf("day").toISOString()
-          : null;
+        const { deadline, hasTime } = buildTodoDeadline(date, startTime);
 
-        await client.models.TodoItem.create({
+        const payload = buildTodoItemInput({
           userId,
           title,
           deadline,
@@ -94,6 +105,7 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
           priority,
           isDone: false,
         });
+        await client.models.TodoItem.create(payload);
       }
       onClose();
     } catch (err) {
@@ -169,13 +181,19 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
               <label className={labelCls}>
                 {itemType === "todo" ? "Date / Deadline (optional)" : "Date"}
               </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required={itemType === "event"}
-                className={inputCls}
-              />
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setDate(nextDate);
+                    if (!nextDate && itemType === "todo") {
+                      setStartTime("");
+                    }
+                  }}
+                  required={itemType === "event"}
+                  className={inputCls}
+                />
             </div>
             <div>
               <label className={labelCls}>Repeats</label>
@@ -198,12 +216,27 @@ export default function CreateModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               <div>
                 <label className={labelCls}>{itemType === "event" ? "Start Time" : "Time (optional)"}</label>
-                <input type="time" required={itemType === "event"} value={startTime} onChange={(e) => setStartTime(e.target.value)} className={inputCls} />
+                <input
+                  type="time"
+                  step={CALENDAR_STEP_MINUTES * 60}
+                  required={itemType === "event"}
+                  disabled={itemType === "todo" && !date}
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
+                />
               </div>
               {itemType === "event" && (
                 <div>
                   <label className={labelCls}>End Time</label>
-                  <input type="time" required value={endTime} onChange={(e) => setEndTime(e.target.value)} className={inputCls} />
+                  <input
+                    type="time"
+                    step={CALENDAR_STEP_MINUTES * 60}
+                    required
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className={inputCls}
+                  />
                 </div>
               )}
             </div>

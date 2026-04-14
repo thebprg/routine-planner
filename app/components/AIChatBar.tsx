@@ -3,37 +3,45 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ArrowUp, Loader2, Sparkles } from "lucide-react";
 import { client } from "@/app/utils/amplifyClient";
+import { buildCalendarItemInput, buildTodoDeadline, buildTodoItemInput } from "@/app/utils/scheduling";
 import { getCurrentUser } from "aws-amplify/auth";
 import dayjs from "dayjs";
 
 function sanitizeCalendarItem(data: any) {
+  const isAllDay = data.isAllDay ?? false;
   return {
     title: data.title ?? "",
-    isAllDay: data.isAllDay ?? false,
+    isAllDay,
     startDate: data.startDate ?? dayjs().format("YYYY-MM-DD"),
-    startTime: data.startTime ?? null,
-    endTime: data.endTime ?? null,
+    startTime: isAllDay ? undefined : data.startTime ?? undefined,
+    endTime: isAllDay ? undefined : data.endTime ?? undefined,
     recurrence: data.recurrence ?? "NONE",
-    recurrenceEndDate: data.recurrenceEndDate ?? null,
+    recurrenceEndDate: data.recurrenceEndDate ?? undefined,
     color: data.color ?? "#0A84FF",
-    notes: data.notes ?? null,
+    notes: data.notes ?? undefined,
     priority: typeof data.priority === "number" ? data.priority : 0,
-    source: "user",
-    deletedOccurrences: [],
+    source: data.source ?? "user",
+    deletedOccurrences: data.deletedOccurrences ?? [],
   };
 }
 
 function sanitizeTodoItem(data: any) {
+  const parsedDeadline = data.deadline ? dayjs(data.deadline) : null;
+  const normalized =
+    parsedDeadline?.isValid() && !data.hasTime
+      ? buildTodoDeadline(parsedDeadline.format("YYYY-MM-DD"), null)
+      : { deadline: data.deadline ?? null, hasTime: data.hasTime ?? false };
+
   return {
     title: data.title ?? "",
-    deadline: data.deadline ?? null,
-    hasTime: data.hasTime ?? false,
+    deadline: normalized.deadline ?? undefined,
+    hasTime: normalized.hasTime,
     isRecurring: data.isRecurring ?? false,
     recurrence: data.recurrence ?? "NONE",
-    recurrenceEndDate: data.recurrenceEndDate ?? null,
-    notes: data.notes ?? null,
+    recurrenceEndDate: data.recurrenceEndDate ?? undefined,
+    notes: data.notes ?? undefined,
     priority: typeof data.priority === "number" ? data.priority : 0,
-    isDone: false,
+    isDone: data.isDone ?? false,
   };
 }
 
@@ -160,15 +168,21 @@ export default function AIChatBar() {
         for (const op of ops) {
           if (op.action === "add" && op.data) {
             if (op.itemType === "CalendarItem") {
-              await client.models.CalendarItem.create({ ...sanitizeCalendarItem(op.data), userId });
+              await client.models.CalendarItem.create(
+                buildCalendarItemInput({ ...sanitizeCalendarItem(op.data), userId })
+              );
             } else {
-              await client.models.TodoItem.create({ ...sanitizeTodoItem(op.data), userId });
+              await client.models.TodoItem.create(
+                buildTodoItemInput({ ...sanitizeTodoItem(op.data), userId })
+              );
             }
           } else if (op.action === "edit" && op.data) {
             if (op.targetDate) {
               const targets = calItemsRef.current.filter((i) => i.startDate === op.targetDate);
               for (const t of targets) {
-                await client.models.CalendarItem.update({ id: t.id, ...sanitizeCalendarItem({ ...t, ...op.data }) });
+                await client.models.CalendarItem.update(
+                  buildCalendarItemInput({ id: t.id, ...sanitizeCalendarItem({ ...t, ...op.data }) })
+                );
               }
             } else {
               const target = op.targetId
@@ -178,9 +192,13 @@ export default function AIChatBar() {
               if (target) {
                 const type = op.itemType ?? getItemType(target);
                 if (type === "CalendarItem") {
-                  await client.models.CalendarItem.update({ id: target.id, ...sanitizeCalendarItem({ ...target, ...op.data }) });
+                  await client.models.CalendarItem.update(
+                    buildCalendarItemInput({ id: target.id, ...sanitizeCalendarItem({ ...target, ...op.data }) })
+                  );
                 } else {
-                  await client.models.TodoItem.update({ id: target.id, ...sanitizeTodoItem({ ...target, ...op.data }) });
+                  await client.models.TodoItem.update(
+                    buildTodoItemInput({ id: target.id, ...sanitizeTodoItem({ ...target, ...op.data }) })
+                  );
                 }
               }
             }
